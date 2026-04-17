@@ -3,21 +3,23 @@ Main presence service module.
 Orchestrates all components for Discord Rich Presence.
 """
 
-import time
+import json
 import re
+import time
 from datetime import timedelta
+from typing import Any, Dict, List, Optional
 
 import pypresence
 from yandex_music import Client, exceptions as yandex_exceptions
 
-from .app_state import get_app_state, ActivityTypeConfig, LanguageConfig, LogType, PlaybackStatus
+from .app_state import get_app_state, ActivityTypeConfig, LanguageConfig, LogType, PlaybackStatus, ButtonConfig
 from .rpc_manager import DiscordRPCManager
 from .media_manager import MediaInfoProvider
 from .track_finder import TrackFinder
 from .exceptions import TokenError, NetworkError
 from ..utils.logger import log
 from ..utils.async_utils import run_async, AsyncTimeoutError
-from ..utils.string_utils import blur_string
+from ..utils.string_utils import blur_string, format_duration
 
 
 class PresenceService:
@@ -248,48 +250,44 @@ class PresenceService:
             self._handle_yandex_exception(e)
             return {'success': False}
     
-    def _handle_yandex_exception(self, exception):
+    def _handle_yandex_exception(self, exception: Exception) -> None:
         """Handle Yandex Music API exceptions."""
-        json_str = str(exception).replace("'", '"')
-        match = re.search(r'({.*?})', json_str)
-        
-        if match:
-            json_str = match.group(1)
-        
         try:
-            import json
-            data = json.loads(json_str)
-            error_name = data.get('name')
-            
-            if error_name == 'Unavailable For Legal Reasons':
-                log(
-                    "You are using Yandex music in a country where it is not available "
-                    "without authorization! Turn off VPN or login using a Yandex token.",
-                    LogType.Error
-                )
-            elif error_name == 'session-expired':
-                log("Your Yandex token is out of date or incorrect, login again.", LogType.Error)
+            # Try to parse JSON from exception message properly
+            json_match = re.search(r'\{[^{}]*\}', str(exception))
+            if json_match:
+                data = json.loads(json_match.group())
+                error_name = data.get('name', 'Unknown Error')
+                
+                if error_name == 'Unavailable For Legal Reasons':
+                    log(
+                        "You are using Yandex music in a country where it is not available "
+                        "without authorization! Turn off VPN or login using a Yandex token.",
+                        LogType.Error
+                    )
+                elif error_name == 'session-expired':
+                    log("Your Yandex token is out of date or incorrect, login again.", LogType.Error)
+                else:
+                    log(f"Yandex API error: {error_name}", LogType.Error)
             else:
                 log(f"Something happened: {exception}", LogType.Error)
-        except Exception:
+        except (json.JSONDecodeError, AttributeError):
             log(f"Something happened: {exception}", LogType.Error)
     
+
     def stop(self):
-        """Stop the presence service."""
+        """Stop the presence service and cleanup resources."""
         self.rpc_manager.stop()
+        self.media_provider.invalidate_cache()
+        self.running = False
 
 
-# Import needed for type checking
-from .app_state import ButtonConfig
-from ..utils.string_utils import format_duration
-
-
-def build_buttons(url):
+def build_buttons(url: str) -> List[Dict[str, str]]:
     """Build RPC buttons based on configuration."""
-    from .app_state import get_app_state, ButtonConfig, LanguageConfig
+    from .app_state import get_app_state, LanguageConfig
     
     app_state = get_app_state()
-    buttons = []
+    buttons: List[Dict[str, str]] = []
     
     if app_state.button_config == ButtonConfig.YANDEX_MUSIC_WEB:
         buttons.append({
@@ -308,7 +306,7 @@ def build_buttons(url):
                 if app_state.language_config == LanguageConfig.ENGLISH 
                 else 'Откр. в прилож.'
             ), 
-            'url': deep_link
+            'url': deep_link or url
         })
     elif app_state.button_config == ButtonConfig.BOTH:
         buttons.append({
@@ -326,7 +324,7 @@ def build_buttons(url):
                 if app_state.language_config == LanguageConfig.ENGLISH 
                 else 'Откр. в прилож.'
             ), 
-            'url': deep_link
+            'url': deep_link or url
         })
     
     # Validate button label lengths
@@ -338,7 +336,7 @@ def build_buttons(url):
     return buttons
 
 
-def extract_deep_link(url):
+def extract_deep_link(url: str) -> Optional[str]:
     """Extract deep link from Yandex Music URL."""
     pattern = r"https://music.yandex.ru/album/(\d+)/track/(\d+)"
     match = re.match(pattern, url)
@@ -347,3 +345,4 @@ def extract_deep_link(url):
         album_id, track_id = match.groups()
         return f"yandexmusic://album/{album_id}/track/{track_id}"
     return None
+
