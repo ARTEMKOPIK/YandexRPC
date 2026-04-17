@@ -1,0 +1,26 @@
+name: Auto-Release Notes
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Get latest release info
+        id: release_info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const release = context.payload.release;
+            core.setOutput('tag_name', release.tag_name);
+            core.setOutput('published_at', release.published_at);
+      
+      - name: Show release info
+        run: |
+          echo "🎉 Вышел новый релиз: ${{ steps.release_info.outputs.tag_name }}"
+          echo "Дата публикации: ${{ steps.release_info.outputs.published_at }}"
