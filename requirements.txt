@@ -1,4 +1,7 @@
-pypresence @ git+https://github.com/qwertyquerty/pypresence.git
+# Discord Rich Presence
+pypresence>=4.3.0
+
+# Windows Runtime (WinRT) for media control
 winrt-Windows.Foundation.Collections
 winrt-Windows.Storage.Streams
 winrt-Windows.Media.Control
@@ -6,10 +9,18 @@ winrt-Windows.Foundation
 winrt-Windows.Media
 winrt-runtime
 winrt-sdk
+
+# Build tools
 pyinstaller==6.5.0
+
+# UI dependencies (PyQt6 only - removed conflicting PyQt5)
 PyQt6
 PyQt6-WebEngine
+
+# Yandex Music API
 yandex-music
+
+# Utilities
 packaging
 requests
 colorama
@@ -17,6 +28,4 @@ pystray
 keyring
 pywin32
 Pillow
-asyncio
 psutil
-PyQt5
